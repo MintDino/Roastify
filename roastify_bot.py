@@ -1,39 +1,44 @@
+import os
 import asyncio
 import random
-import sqlite3
+import psycopg2
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
 from aiogram.utils import executor
 
-# Bot Token (Replace with your bot token from @BotFather)
-TOKEN = "YOUR_BOT_TOKEN"
+# ✅ Load environment variables
+TOKEN = os.getenv("BOT_TOKEN")  # Set this in Railway
+DATABASE_URL = os.getenv("DATABASE_URL")  # PostgreSQL URL from Railway
 ADMIN_USERNAME = "Mint_Dino"  # Hardcoded admin username
 
-# Initialize bot and dispatcher
+# ✅ Initialize bot and dispatcher
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-# Connect to SQLite Database
-conn = sqlite3.connect("roastify.db")
+# ✅ Connect to PostgreSQL Database
+conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
 
-# Create tables if they don't exist
+# ✅ Create tables if they don't exist
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS leaderboard (
-    user_id INTEGER PRIMARY KEY,
+    user_id BIGINT PRIMARY KEY,
     username TEXT,
     roasts_received INTEGER DEFAULT 0
 )
 """)
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS roasts (
+    id SERIAL PRIMARY KEY,
     level TEXT,
     text TEXT
 )
 """)
+
 conn.commit()
 
-# Predefined Roast categories
+# ✅ Predefined Roast categories
 ROASTS = {
     "mild": [
         "You're like a cloud... when you disappear, it's a beautiful day!",
@@ -53,25 +58,25 @@ ROASTS = {
     ]
 }
 
-# Function to send a roast
+# ✅ Function to get a roast
 def get_roast(level):
-    cursor.execute("SELECT text FROM roasts WHERE level = ?", (level,))
+    cursor.execute("SELECT text FROM roasts WHERE level = %s", (level,))
     results = cursor.fetchall()
     if results:
         return random.choice(results)[0]
     return random.choice(ROASTS.get(level, ["No roasts available!"]))
 
-# Update leaderboard
+# ✅ Function to update leaderboard
 def update_leaderboard(user_id, username):
-    cursor.execute("SELECT roasts_received FROM leaderboard WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT roasts_received FROM leaderboard WHERE user_id = %s", (user_id,))
     result = cursor.fetchone()
     if result:
-        cursor.execute("UPDATE leaderboard SET roasts_received = roasts_received + 1 WHERE user_id = ?", (user_id,))
+        cursor.execute("UPDATE leaderboard SET roasts_received = roasts_received + 1 WHERE user_id = %s", (user_id,))
     else:
-        cursor.execute("INSERT INTO leaderboard (user_id, username, roasts_received) VALUES (?, ?, 1)", (user_id, username))
+        cursor.execute("INSERT INTO leaderboard (user_id, username, roasts_received) VALUES (%s, %s, 1)", (user_id, username))
     conn.commit()
 
-# Command to roast a user
+# ✅ /roast command
 @dp.message_handler(commands=['roast'])
 async def roast_user(message: Message):
     args = message.text.split()
@@ -89,7 +94,7 @@ async def roast_user(message: Message):
     update_leaderboard(message.from_user.id, message.from_user.username)
     await message.reply(f"🔥 {user}, {roast}")
 
-# Command to check leaderboard
+# ✅ /leaderboard command
 @dp.message_handler(commands=['leaderboard'])
 async def show_leaderboard(message: Message):
     cursor.execute("SELECT username, roasts_received FROM leaderboard ORDER BY roasts_received DESC LIMIT 10")
@@ -104,7 +109,7 @@ async def show_leaderboard(message: Message):
     
     await message.reply(leaderboard_text, parse_mode="Markdown")
 
-# Admin commands
+# ✅ /addroast command (Admin only)
 @dp.message_handler(commands=['addroast'])
 async def add_roast(message: Message):
     if message.from_user.username != ADMIN_USERNAME:
@@ -115,10 +120,11 @@ async def add_roast(message: Message):
         return await message.reply("Usage: /addroast level roast_text")
     
     level, text = args[1], args[2]
-    cursor.execute("INSERT INTO roasts (level, text) VALUES (?, ?)", (level, text))
+    cursor.execute("INSERT INTO roasts (level, text) VALUES (%s, %s)", (level, text))
     conn.commit()
     await message.reply(f"✅ Roast added to {level} category!")
 
+# ✅ /resetleaderboard command (Admin only)
 @dp.message_handler(commands=['resetleaderboard'])
 async def reset_leaderboard(message: Message):
     if message.from_user.username != ADMIN_USERNAME:
@@ -128,10 +134,10 @@ async def reset_leaderboard(message: Message):
     conn.commit()
     await message.reply("✅ Leaderboard has been reset!")
 
-# Start bot
+# ✅ Start bot
 async def main():
     await dp.start_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
-  
+    
